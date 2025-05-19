@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ฟอร์มบันทึกข้อมูลเข้า GitHub JSON</title>
+</head>
+<body>
+  <h2>ฟอร์มกรอกข้อมูล</h2>
+  <form id="dataForm">
+    <label>ชื่อ: <input type="text" name="name" required></label><br>
+    <label>อีเมล: <input type="email" name="email" required></label><br>
+    <button type="submit">📤 บันทึกข้อมูล</button>
+  </form>
+
+  <pre id="status">⏳ รอการส่งข้อมูล...</pre>
+
+  <script>
+    const GITHUB_USERNAME = 'your-username';       // 👉 แก้เป็นของคุณ
+    const REPO = 'your-repo';                      // 👉 แก้เป็นของคุณ
+    const FILE_PATH = 'data.json';                 
+    const TOKEN = 'ghp_xxxxxxxxxxxxxxxxxxxxx';     // 🔥 ใส่ PAT ของคุณ (อย่าใช้บนเว็บ public จริง)
+
+    const form = document.getElementById('dataForm');
+    const status = document.getElementById('status');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = '⏳ กำลังดำเนินการ...';
+
+      const formData = new FormData(form);
+      const newData = Object.fromEntries(formData.entries());
+
+      const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO}/contents/${FILE_PATH}`;
+
+      try {
+        // 1. ดึงข้อมูล data.json เดิม
+        const getRes = await fetch(apiUrl, {
+          headers: {
+            Authorization: `token ${TOKEN}`,
+            Accept: 'application/vnd.github.v3+json'
+          }
+        });
+
+        const fileData = await getRes.json();
+        const existingContent = JSON.parse(atob(fileData.content));
+
+        // 2. เพิ่มข้อมูลใหม่
+        existingContent.push(newData);
+        const updatedContent = btoa(JSON.stringify(existingContent, null, 2));
+
+        // 3. อัปโหลดกลับไป GitHub
+        const updateRes = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            Authorization: `token ${TOKEN}`,
+            Accept: 'application/vnd.github.v3+json'
+          },
+          body: JSON.stringify({
+            message: 'เพิ่มข้อมูลใหม่',
+            content: updatedContent,
+            sha: fileData.sha
+          })
+        });
+
+        if (updateRes.ok) {
+          status.textContent = '✅ บันทึกข้อมูลสำเร็จ!';
+          form.reset();
+        } else {
+          const error = await updateRes.json();
+          status.textContent = '❌ เกิดข้อผิดพลาด: ' + JSON.stringify(error);
+        }
+
+      } catch (err) {
+        status.textContent = '❌ ข้อผิดพลาด: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
