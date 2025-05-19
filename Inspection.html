@@ -15,64 +15,75 @@
   <pre id="status">⏳ รอการส่งข้อมูล...</pre>
 
   <script>
-    const GITHUB_USERNAME = 'Irbeem';       // 👉 แก้เป็นของคุณ
-    const REPO = 'Inspection';                      // 👉 แก้เป็นของคุณ
-    const FILE_PATH = 'data.json';                 
-    const TOKEN = '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';     // 🔥 ใส่ PAT ของคุณ (อย่าใช้บนเว็บ public จริง)
-    const form = document.getElementById('dataForm');
-    const status = document.getElementById('status');
+  const GITHUB_USERNAME = 'Irbeem';
+  const REPO = 'Inspection';
+  const FILE_PATH = 'data.json';
+  const TOKEN = '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'; // ⚠️ สำหรับทดสอบเท่านั้น อย่าใส่ในเว็บ public
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      status.textContent = '⏳ กำลังดำเนินการ...';
+  const form = document.getElementById('dataForm');
+  const status = document.getElementById('status');
 
-      const formData = new FormData(form);
-      const newData = Object.fromEntries(formData.entries());
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    status.textContent = '⏳ กำลังดำเนินการ...';
 
-      const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO}/contents/${FILE_PATH}`;
+    const formData = new FormData(form);
+    const newData = Object.fromEntries(formData.entries());
 
-      try {
-        // 1. ดึงข้อมูล data.json เดิม
-        const getRes = await fetch(apiUrl, {
-          headers: {
-            Authorization: `token ${TOKEN}`,
-            Accept: 'application/vnd.github.v3+json'
-          }
-        });
+    const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO}/contents/${FILE_PATH}`;
 
-        const fileData = await getRes.json();
-        const existingContent = JSON.parse(atob(fileData.content));
-
-        // 2. เพิ่มข้อมูลใหม่
-        existingContent.push(newData);
-        const updatedContent = btoa(JSON.stringify(existingContent, null, 2));
-
-        // 3. อัปโหลดกลับไป GitHub
-        const updateRes = await fetch(apiUrl, {
-          method: 'PUT',
-          headers: {
-            Authorization: `token ${TOKEN}`,
-            Accept: 'application/vnd.github.v3+json'
-          },
-          body: JSON.stringify({
-            message: 'เพิ่มข้อมูลใหม่',
-            content: updatedContent,
-            sha: fileData.sha
-          })
-        });
-
-        if (updateRes.ok) {
-          status.textContent = '✅ บันทึกข้อมูลสำเร็จ!';
-          form.reset();
-        } else {
-          const error = await updateRes.json();
-          status.textContent = '❌ เกิดข้อผิดพลาด: ' + JSON.stringify(error);
+    try {
+      // 1. ดึงข้อมูลจาก GitHub
+      const getRes = await fetch(apiUrl, {
+        headers: {
+          Authorization: `token ${TOKEN}`,
+          Accept: 'application/vnd.github.v3+json'
         }
+      });
 
-      } catch (err) {
-        status.textContent = '❌ ข้อผิดพลาด: ' + err.message;
+      if (!getRes.ok) {
+        const error = await getRes.json();
+        throw new Error(`ไม่สามารถอ่านไฟล์: ${error.message}`);
       }
-    });
-  </script>
+
+      const fileData = await getRes.json();
+
+      // ตรวจสอบว่า content มีจริงและเป็น base64
+      if (!fileData.content || fileData.encoding !== 'base64') {
+        throw new Error("เนื้อหาไฟล์ไม่ถูกต้องหรือไม่ใช่ base64");
+      }
+
+      const existingContent = JSON.parse(atob(fileData.content));
+      existingContent.push(newData);
+      const updatedContent = btoa(JSON.stringify(existingContent, null, 2));
+
+      // 2. อัปโหลดกลับไป GitHub
+      const updateRes = await fetch(apiUrl, {
+        method: 'PUT',
+        headers: {
+          Authorization: `token ${TOKEN}`,
+          Accept: 'application/vnd.github.v3+json'
+        },
+        body: JSON.stringify({
+          message: 'เพิ่มข้อมูลใหม่',
+          content: updatedContent,
+          sha: fileData.sha
+        })
+      });
+
+      if (updateRes.ok) {
+        status.textContent = '✅ บันทึกข้อมูลสำเร็จ!';
+        form.reset();
+      } else {
+        const error = await updateRes.json();
+        status.textContent = '❌ บันทกล้มเหลว: ' + error.message;
+      }
+
+    } catch (err) {
+      status.textContent = '❌ ข้อผิดพลาด: ' + err.message;
+    }
+  });
+</script>
+
 </body>
 </html>
