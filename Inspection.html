@@ -1,89 +1,89 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8">
-  <title>ฟอร์มบันทึกข้อมูลเข้า GitHub JSON</title>
+  <meta charset="UTF-8" />
+  <title>บันทึกข้อมูลเข้า GitHub JSON</title>
 </head>
 <body>
   <h2>ฟอร์มกรอกข้อมูล</h2>
   <form id="dataForm">
-    <label>ชื่อ: <input type="text" name="name" required></label><br>
-    <label>อีเมล: <input type="email" name="email" required></label><br>
-    <button type="submit">📤 บันทึกข้อมูล</button>
+    <label>ชื่อ: <input type="text" name="name" required></label><br />
+    <label>อีเมล: <input type="email" name="email" required></label><br />
+    <button type="submit">บันทึกข้อมูล</button>
   </form>
 
-  <pre id="status">⏳ รอการส่งข้อมูล...</pre>
+  <pre id="status">สถานะ: รอการส่งข้อมูล...</pre>
 
   <script>
-  const GITHUB_USERNAME = 'Irbeem';
-  const REPO = 'Inspection';
-  const FILE_PATH = 'data.json';
-  const TOKEN = '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'; // ⚠️ สำหรับทดสอบเท่านั้น อย่าใส่ในเว็บ public
+    const GITHUB_USERNAME = 'Irbeem';  // แก้เป็นของคุณ
+    const REPO = 'Inspection';          // แก้เป็น repo ของคุณ
+    const FILE_PATH = 'data.json';      // แก้เป็น path ไฟล์ใน repo
+    const TOKEN = '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'; // ใส่ Personal Access Token ที่มีสิทธิ์
 
-  const form = document.getElementById('dataForm');
-  const status = document.getElementById('status');
+    const form = document.getElementById('dataForm');
+    const status = document.getElementById('status');
 
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    status.textContent = '⏳ กำลังดำเนินการ...';
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = '⏳ กำลังโหลดข้อมูล...';
 
-    const formData = new FormData(form);
-    const newData = Object.fromEntries(formData.entries());
+      const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO}/contents/${FILE_PATH}`;
 
-    const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO}/contents/${FILE_PATH}`;
+      try {
+        // 1. ดึงไฟล์ JSON เดิมจาก GitHub
+        const getRes = await fetch(apiUrl, {
+          headers: {
+            Authorization: `token ${TOKEN}`,
+            Accept: 'application/vnd.github.v3+json'
+          }
+        });
 
-    try {
-      // 1. ดึงข้อมูลจาก GitHub
-      const getRes = await fetch(apiUrl, {
-        headers: {
-          Authorization: `token ${TOKEN}`,
-          Accept: 'application/vnd.github.v3+json'
+        if (!getRes.ok) throw new Error(`ไม่สามารถดึงไฟล์ได้: ${getRes.status}`);
+
+        const fileData = await getRes.json();
+
+        // ถอดรหัสเนื้อหา base64 ของไฟล์ JSON
+        let existingContent = [];
+        if (fileData.content) {
+          existingContent = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
         }
-      });
 
-      if (!getRes.ok) {
-        const error = await getRes.json();
-        throw new Error(`ไม่สามารถอ่านไฟล์: ${error.message}`);
+        // 2. เตรียมข้อมูลใหม่จากฟอร์ม
+        const formData = new FormData(form);
+        const newData = Object.fromEntries(formData.entries());
+
+        // 3. เพิ่มข้อมูลใหม่ลงใน existingContent
+        existingContent.push(newData);
+
+        // 4. เข้ารหัส JSON เป็น base64 สำหรับอัปโหลด
+        const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(existingContent, null, 2))));
+
+        // 5. อัปโหลดไฟล์ JSON กลับไปยัง GitHub พร้อม commit message และ sha ของไฟล์เดิม
+        const updateRes = await fetch(apiUrl, {
+          method: 'PUT',
+          headers: {
+            Authorization: `token ${TOKEN}`,
+            Accept: 'application/vnd.github.v3+json'
+          },
+          body: JSON.stringify({
+            message: 'เพิ่มข้อมูลใหม่จากเว็บฟอร์ม',
+            content: updatedContent,
+            sha: fileData.sha
+          })
+        });
+
+        if (updateRes.ok) {
+          status.textContent = '✅ บันทึกข้อมูลสำเร็จ!';
+          form.reset();
+        } else {
+          const error = await updateRes.json();
+          status.textContent = '❌ เกิดข้อผิดพลาด: ' + JSON.stringify(error);
+        }
+
+      } catch (err) {
+        status.textContent = '❌ ข้อผิดพลาด: ' + err.message;
       }
-
-      const fileData = await getRes.json();
-
-      // ตรวจสอบว่า content มีจริงและเป็น base64
-      if (!fileData.content || fileData.encoding !== 'base64') {
-        throw new Error("เนื้อหาไฟล์ไม่ถูกต้องหรือไม่ใช่ base64");
-      }
-
-      const existingContent = JSON.parse(atob(fileData.content));
-      existingContent.push(newData);
-      const updatedContent = btoa(JSON.stringify(existingContent, null, 2));
-
-      // 2. อัปโหลดกลับไป GitHub
-      const updateRes = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: {
-          Authorization: `token ${TOKEN}`,
-          Accept: 'application/vnd.github.v3+json'
-        },
-        body: JSON.stringify({
-          message: 'เพิ่มข้อมูลใหม่',
-          content: updatedContent,
-          sha: fileData.sha
-        })
-      });
-
-      if (updateRes.ok) {
-        status.textContent = '✅ บันทึกข้อมูลสำเร็จ!';
-        form.reset();
-      } else {
-        const error = await updateRes.json();
-        status.textContent = '❌ บันทกล้มเหลว: ' + error.message;
-      }
-
-    } catch (err) {
-      status.textContent = '❌ ข้อผิดพลาด: ' + err.message;
-    }
-  });
-</script>
-
+    });
+  </script>
 </body>
 </html>
