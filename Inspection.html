@@ -1,89 +1,50 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>บันทึกข้อมูลเข้า GitHub JSON</title>
+  <title>YAPT CS WEB</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="module" src="main.js" defer></script>
 </head>
 <body>
-  <h2>ฟอร์มกรอกข้อมูล</h2>
-  <form id="dataForm">
-    <label>ชื่อ: <input type="text" name="name" required></label><br />
-    <label>อีเมล: <input type="email" name="email" required></label><br />
-    <button type="submit">บันทึกข้อมูล</button>
-  </form>
 
-  <pre id="status">สถานะ: รอการส่งข้อมูล...</pre>
+  <!-- ส่วน Wrapper ทั้งหมด -->
+  <div id="wrapper">
 
-  <script>
-    const GITHUB_USERNAME = 'Irbeem';  // แก้เป็นของคุณ
-    const REPO = 'Inspection';          // แก้เป็น repo ของคุณ
-    const FILE_PATH = 'data.json';      // แก้เป็น path ไฟล์ใน repo
-    const TOKEN = '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'; // ใส่ Personal Access Token ที่มีสิทธิ์
-    
-    const form = document.getElementById('dataForm');
-    const status = document.getElementById('status');
+    <!-- ส่วน Header ด้านบน -->
+    <header id="mainHeader">
+      <h1>🤖 YAPT Customer Service Portal</h1>
+    </header>
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      status.textContent = '⏳ กำลังโหลดข้อมูล...';
+    <!-- ส่วน Content หลัก -->
+    <div id="contentArea">
+      
+      <!-- Login Section -->
+      <div id="loginWrapper">
+        <form id="loginForm">
+          <h2>Login</h2><br>
+          <div><label>Email</label><input type="email" name="email" required></div>
+          <div><label>Password</label><input type="password" name="password" required></div>
+          <div class="full"><br><button class="btn" type="submit">Login</button></div>
+        </form>
+      </div>
 
-      const apiUrl = `https://api.github.com/repos/${GITHUB_USERNAME}/${REPO}/contents/${FILE_PATH}`;
+      <!-- Robot Section -->
+      <div id="robotSection">
+        <div class="button-group">
+          <a href="input_form_new.html" class="btn" target="_blank">📝 Robot Data Input</a>
+          <a href="region.html" class="btn" target="_blank">🤖 RobotMap</a>
+          <a href="view5.html" class="btn" target="_blank">📊 View All Data</a>
+          <a href="VisitCustomer.html" class="btn" target="_blank">🗓️Create Visit plan</a>
+          <a href="visit_view.html" class="btn" target="_blank">🗓️View Visit plan</a>
+          <a href="visit_summary.html" class="btn" target="_blank">🗓️View summary</a>
+          <button id="logoutBtn" class="btn">🔒 LogOut</button>
+        </div>
+      </div>
 
-      try {
-        // 1. ดึงไฟล์ JSON เดิมจาก GitHub
-        const getRes = await fetch(apiUrl, {
-          headers: {
-            Authorization: `token ${TOKEN}`,
-            Accept: 'application/vnd.github.v3+json'
-          }
-        });
+    </div> <!-- contentArea -->
 
-        if (!getRes.ok) throw new Error(`ไม่สามารถดึงไฟล์ได้: ${getRes.status}`);
+  </div> <!-- wrapper -->
 
-        const fileData = await getRes.json();
-
-        // ถอดรหัสเนื้อหา base64 ของไฟล์ JSON
-        let existingContent = [];
-        if (fileData.content) {
-          existingContent = JSON.parse(atob(fileData.content.replace(/\n/g, '')));
-        }
-
-        // 2. เตรียมข้อมูลใหม่จากฟอร์ม
-        const formData = new FormData(form);
-        const newData = Object.fromEntries(formData.entries());
-
-        // 3. เพิ่มข้อมูลใหม่ลงใน existingContent
-        existingContent.push(newData);
-
-        // 4. เข้ารหัส JSON เป็น base64 สำหรับอัปโหลด
-        const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(existingContent, null, 2))));
-
-        // 5. อัปโหลดไฟล์ JSON กลับไปยัง GitHub พร้อม commit message และ sha ของไฟล์เดิม
-        const updateRes = await fetch(apiUrl, {
-          method: 'PUT',
-          headers: {
-            Authorization: `token ${TOKEN}`,
-            Accept: 'application/vnd.github.v3+json'
-          },
-          body: JSON.stringify({
-            message: 'เพิ่มข้อมูลใหม่จากเว็บฟอร์ม',
-            content: updatedContent,
-            sha: fileData.sha
-          })
-        });
-
-        if (updateRes.ok) {
-          status.textContent = '✅ บันทึกข้อมูลสำเร็จ!';
-          form.reset();
-        } else {
-          const error = await updateRes.json();
-          status.textContent = '❌ เกิดข้อผิดพลาด: ' + JSON.stringify(error);
-        }
-
-      } catch (err) {
-        status.textContent = '❌ ข้อผิดพลาด: ' + err.message;
-      }
-    });
-  </script>
 </body>
 </html>
