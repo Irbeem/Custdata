@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="google" content="notranslate">
+  <title>Visit Plan List (With Filters)</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; }
+    th { background-color: #007bff; color: white; text-align: left; }
+    a { color: #007bff; text-decoration: none; }
+    button { padding: 4px 8px; }
+    .filter-container { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+
+  <h2>Visit Plan Records (With Filters)</h2>
+
+  <div class="filter-container">
+    <label>User:</label>
+    <select id="userFilter">
+      <option value="">All</option>
+    </select>
+    
+    <label>Start Date:</label>
+    <input type="date" id="startDate">
+    
+    <label>End Date:</label>
+    <input type="date" id="endDate">
+    
+    <label>Show:</label>
+    <select id="pageSizeSelect">
+      <option value="10">10</option>
+      <option value="20">20</option>
+      <option value="50">50</option>
+    </select>
+
+    <button onclick="applyFilters()">Filter</button>
+  </div>
+
+  <div id="paginationControls"></div>
+
+  <table id="visitTable">
+    <thead>
+      <tr>
+        <th>Visit Date</th>
+        <th>Order</th>
+        <th>Customer</th>
+        <th>User</th>
+        <th>Details</th>
+        <th>Delete</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCWTkIN4dKaRI1ZlyHxxhxovhoMGF_8wPc",
+  authDomain: "cusdata-51e4f.firebaseapp.com",
+  databaseURL: "https://cusdata-51e4f-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "cusdata-51e4f"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const tableBody = document.querySelector("#visitTable tbody");
+const userFilter = document.getElementById("userFilter");
+const startDateInput = document.getElementById("startDate");
+const endDateInput = document.getElementById("endDate");
+const pageSizeSelect = document.getElementById("pageSizeSelect");
+const paginationControls = document.getElementById("paginationControls");
+
+let allPlans = [];
+let filteredPlans = [];
+let currentPage = 1;
+let pageSize = 10;
+
+firebase.auth().onAuthStateChanged(user => {
+  if (user) {
+    loadVisitPlans();
+  } else {
+    alert("Please login to access the system");
+    window.location.href = "login.html";
+  }
+});
+
+function loadVisitPlans() {
+  db.ref("visit_plan").once("value", snapshot => {
+    const data = snapshot.val() || {};
+    allPlans = [];
+    Object.entries(data).forEach(([key, val]) => {
+      (val.customers || []).forEach((cust, index) => {
+        allPlans.push({
+          key: key,
+          visitDate: val.visitDate,
+          loginEmail: val.loginEmail,
+          customerName: cust.customerName,
+          loginName: val.loginName,
+          order: index + 1
+        });
+      });
+    });
+    populateUserFilter();
+    applyFilters();
+  });
+}
+
+function populateUserFilter() {
+  const users = [...new Set(allPlans.map(p => p.loginName).filter(Boolean))];
+  userFilter.innerHTML = '<option value="">All</option>' + users.map(u => `<option value="${u}">${u}</option>`).join('');
+}
+
+function applyFilters() {
+  pageSize = parseInt(pageSizeSelect.value);
+  currentPage = 1;
+
+  filteredPlans = allPlans.filter(p => {
+    if (userFilter.value && p.loginName !== userFilter.value) return false;
+    if (startDateInput.value && p.visitDate < startDateInput.value) return false;
+    if (endDateInput.value && p.visitDate > endDateInput.value) return false;
+    return true;
+  });
+
+  filteredPlans.sort((a, b) => b.visitDate.localeCompare(a.visitDate));
+  renderTable();
+}
+
+function renderTable() {
+  const totalPages = Math.ceil(filteredPlans.length / pageSize);
+  if (currentPage > totalPages) currentPage = totalPages || 1;
+  const startIdx = (currentPage - 1) * pageSize;
+  const pageData = filteredPlans.slice(startIdx, startIdx + pageSize);
+
+  const rows = pageData.map(p => `
+    <tr>
+      <td>${p.visitDate}</td>
+      <td>${p.order}</td>
+      <td>${p.customerName || '-'}</td>
+      <td>${p.loginName || '-'}</td>
+      <td><a href="visit_detail.html?id=${p.key}" target="_blank">View</a></td>
+      <td><button onclick="deleteVisitPlan('${p.key}')">Delete</button></td>
+    </tr>
+  `).join('');
+  tableBody.innerHTML = rows;
+
+  renderPagination(totalPages);
+}
+
+function renderPagination(totalPages) {
+  let html = '';
+  for (let i = 1; i <= totalPages; i++) {
+    html += `<button onclick="goToPage(${i})" ${i === currentPage ? 'style="font-weight:bold"' : ''}>${i}</button> `;
+  }
+  paginationControls.innerHTML = html;
+}
+
+function goToPage(page) {
+  currentPage = page;
+  renderTable();
+}
+
+function deleteVisitPlan(planKey) {
+  if (confirm("Are you sure you want to delete this entire visit plan?")) {
+    db.ref("visit_plan/" + planKey).remove()
+      .then(() => {
+        alert("Visit plan deleted.");
+        loadVisitPlans();
+      })
+      .catch((error) => {
+        alert("Error deleting: " + error);
+      });
+  }
+}
+</script>
+</body>
+</html>
