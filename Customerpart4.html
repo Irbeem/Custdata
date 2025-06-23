@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>YAPT Customer Part Viewer (Global Load + Customer Select with TomSelect)</title>
+  
+  <link href="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/css/tom-select.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/tom-select@2.3.1/dist/js/tom-select.complete.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body { margin: 0; font-family: sans-serif; }
+    .container { display: flex; flex-direction: row; height: 100vh; }
+    .left-panel { width: 50%; padding: 10px 10px 10px 20px; margin-right: 50%; overflow-y: auto; height: 100vh; }
+    .right-panel { width: 50%; position: fixed; right: 0; top: 0; height: 100vh; z-index: 1; overflow-y: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { padding: 8px; border: 1px solid #ccc; text-align: left; font-size: 14px; }
+    th { background-color: #007bff; color: white; }
+    select { padding: 5px; border: 1px solid #ccc; border-radius: 4px; }
+    #topButton { position: fixed; bottom: 20px; right: 20px; padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="left-panel">
+    <h2>Part Viewer (Global Load + Customer Select)</h2>
+    <label>Customer:</label>
+    <select id="customerSelect" placeholder="--Select--"></select>
+    <button onclick="applyFilters()">Display</button>
+
+    <div id="summaryBlock"></div>
+    <table id="dataTable">
+      <thead>
+        <tr><th>Year</th><th>Customer</th><th>MatCode</th><th>PartName</th><th>Qt</th><th>Unit</th><th>Price</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="right-panel">
+    <h4>Purchase Summary by Year</h4>
+    <table id="yearSummaryTable">
+      <thead>
+        <tr><th>Year</th><th>Times</th><th>Part PCs</th><th>Value</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <canvas id="yearlyChart"></canvas>
+  </div>
+</div>
+
+<button id="topButton" onclick="window.scrollTo({top:0,behavior:'smooth'});">Top</button>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyCWTkIN4dKaRI1ZlyHxxhxovhoMGF_8wPc",
+  authDomain: "cusdata-51e4f.firebaseapp.com",
+  databaseURL: "https://cusdata-51e4f-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "cusdata-51e4f"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+let allData = [];
+let filteredData = [];
+let chartInstance = null;
+
+firebase.auth().onAuthStateChanged(user => {
+  if (!user) return window.location.href = "index.html";
+  loadData();
+});
+
+function loadData() {
+  db.ref("part").once("value", snapshot => {
+    allData = Object.values(snapshot.val() || {});
+    populateCustomerFilter();
+  });
+}
+
+function populateCustomerFilter() {
+  const customers = [...new Set(allData.map(d => d.Customer).filter(Boolean))].sort();
+  const customerSelect = document.getElementById("customerSelect");
+  customerSelect.innerHTML = "<option value=''>--Select--</option>";
+  customers.forEach(c => {
+    const option = document.createElement("option");
+    option.value = c; option.text = c;
+    customerSelect.appendChild(option);
+  });
+  new TomSelect("#customerSelect", { 
+    create: false, 
+    maxItems: 1, 
+    maxOptions: 10000,
+    sortField: "text",
+    placeholder: "--Select--"
+  });
+}
+
+function applyFilters() {
+  const customer = document.getElementById("customerSelect").value;
+  if (!customer) {
+    alert("Please select a customer.");
+    return;
+  }
+  filteredData = allData.filter(d => d.Customer === customer);
+  renderTable();
+  renderSummaryTable();
+  renderYearSummaryTable();
+  renderChart();
+}
+
+function renderTable() {
+  const tbody = document.querySelector("#dataTable tbody");
+  tbody.innerHTML = "";
+  filteredData.forEach(d => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${d.Year || "-"}</td>
+      <td>${d.Customer || "-"}</td>
+      <td>${d.MatCode || "-"}</td>
+      <td>${d.PartName || "-"}</td>
+      <td>${d.Qt || "-"}</td>
+      <td>${d.Unit || "-"}</td>
+      <td>${d.Price || "-"}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSummaryTable() {
+  const summaryBlock = document.getElementById("summaryBlock");
+  const summary = {};
+  filteredData.forEach(d => {
+    const pname = d.PartName || "Unknown";
+    summary[pname] = (summary[pname] || 0) + 1;
+  });
+  let html = `<h4>Summary Table</h4><table><thead><tr><th>PartName</th><th>Count</th></tr></thead><tbody>`;
+  Object.entries(summary).forEach(([p, q]) => {
+    html += `<tr><td>${p}</td><td>${q}</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  summaryBlock.innerHTML = html;
+}
+
+function renderYearSummaryTable() {
+  const summaryByYear = {};
+  filteredData.forEach(d => {
+    const year = d.Year || "Unknown";
+    const price = parseFloat((d.Price || "0").toString().replace(/,/g, '')) || 0;
+    const pcs = parseFloat(d.Qt || "0") || 0;
+    if (!summaryByYear[year]) summaryByYear[year] = { count: 0, pcs: 0, totalPrice: 0 };
+    summaryByYear[year].count++;
+    summaryByYear[year].pcs += pcs;
+    summaryByYear[year].totalPrice += price;
+  });
+  const tbody = document.querySelector("#yearSummaryTable tbody");
+  tbody.innerHTML = "";
+  Object.entries(summaryByYear).sort().forEach(([year, data]) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${year}</td><td>${data.count}</td><td>${data.pcs}</td><td>${data.totalPrice.toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderChart() {
+  const summaryByYear = {};
+  filteredData.forEach(d => {
+    const year = d.Year || "Unknown";
+    let price = parseFloat((d.Price || "0").toString().replace(/,/g, '')) || 0;
+    summaryByYear[year] = (summaryByYear[year] || 0) + price;
+  });
+  if (chartInstance) chartInstance.destroy();
+  const ctx = document.getElementById('yearlyChart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: Object.keys(summaryByYear),
+      datasets: [{
+        label: 'Total Purchase (Baht)',
+        data: Object.values(summaryByYear),
+        backgroundColor: 'rgba(54, 162, 235, 0.7)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        y: { beginAtZero: true, title: { display: true, text: 'Total (Baht)' } },
+        x: { title: { display: true, text: 'Year' } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.formattedValue} Baht` } }
+      }
+    }
+  });
+}
+</script>
+</body>
+</html>
